@@ -232,7 +232,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2017/12/13/hello-world/">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2017/11/20/Vue响应式-数据响应式原理/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="王兴欣">
@@ -251,7 +251,7 @@
         
           <h1 class="post-title" itemprop="name headline">
                 
-                <a class="post-title-link" href="/2017/12/13/hello-world/" itemprop="url">Hello World</a></h1>
+                <a class="post-title-link" href="/2017/11/20/Vue响应式-数据响应式原理/" itemprop="url">Vue响应式----数据响应式原理</a></h1>
         
 
         <div class="post-meta">
@@ -263,8 +263,8 @@
               
                 <span class="post-meta-item-text">发表于</span>
               
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2017-12-13T16:00:56+08:00">
-                2017-12-13
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2017-11-20T17:11:41+08:00">
+                2017-11-20
               </time>
             
 
@@ -303,15 +303,360 @@
       
         
           
-            <p>Welcome to <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a>! This is your very first post. Check <a href="https://hexo.io/docs/" target="_blank" rel="noopener">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a href="https://hexo.io/docs/troubleshooting.html" target="_blank" rel="noopener">troubleshooting</a> or you can ask me on <a href="https://github.com/hexojs/hexo/issues" target="_blank" rel="noopener">GitHub</a>.</p>
-<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo new <span class="string">"My New Post"</span></span><br></pre></td></tr></table></figure>
-<p>More info: <a href="https://hexo.io/docs/writing.html" target="_blank" rel="noopener">Writing</a></p>
-<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure>
-<p>More info: <a href="https://hexo.io/docs/server.html" target="_blank" rel="noopener">Server</a></p>
-<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure>
-<p>More info: <a href="https://hexo.io/docs/generating.html" target="_blank" rel="noopener">Generating</a></p>
-<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure>
-<p>More info: <a href="https://hexo.io/docs/deployment.html" target="_blank" rel="noopener">Deployment</a></p>
+            <h3 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h3><p>Vue的数据响应主要是依赖了<code>Object.defineProperty()</code>，那么整个过程是怎么样的呢？以我们自己的想法来走Vue的道路，其实也就是以Vue的原理为终点，我们来逆推一下实现过程。</p>
+<blockquote>
+<p>本文代码皆为低配版本，很多地方都不严谨，比如 <code>if(typeof obj === &#39;object&#39;)</code>这是在判断<code>obj</code>是否为为一个对象，虽然<code>obj</code>也有可能是数组等其他类型的数据，但是本文为了简便，就直接这样写来表示判断对象，对于数组使用<code>Array.isArray()</code>。</p>
+</blockquote>
+<h3 id="改造数据"><a href="#改造数据" class="headerlink" title="改造数据"></a>改造数据</h3><p>我们先来尝试写一个函数，用于改造对象：</p>
+<blockquote>
+<p>为什么要先写这个函数呢？ 因为改造数据是一个最基础也是最重要的步骤,之后所有的步骤都会依赖这一步。</p>
+</blockquote>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 代码 1.1</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">defineReactive</span> (<span class="params">obj,key,val</span>) </span>&#123;</span><br><span class="line">    <span class="built_in">Object</span>.defineProperty(obj,key,&#123;</span><br><span class="line">        enumerable: <span class="literal">true</span>,</span><br><span class="line">    	configurable: <span class="literal">true</span>,</span><br><span class="line">    	get: <span class="function"><span class="keyword">function</span> (<span class="params"></span>) </span>&#123;</span><br><span class="line">    	    <span class="keyword">return</span> val;</span><br><span class="line">    	&#125;,</span><br><span class="line">    	set: <span class="function"><span class="keyword">function</span> (<span class="params">newVal</span>) </span>&#123;</span><br><span class="line">    		<span class="comment">//判断新值与旧值是否相等</span></span><br><span class="line">    		<span class="comment">//判断的后半段是为了验证新值与旧值都为NaN的情况  NaN不等于自身</span></span><br><span class="line">    		<span class="keyword">if</span>(newVal === val || (newVal !== newVal &amp;&amp; value !== value))&#123;</span><br><span class="line">    			<span class="keyword">return</span> ;</span><br><span class="line">    		&#125;</span><br><span class="line">    		val = newVal;</span><br><span class="line">    	&#125;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>例如<code>const obj = {}</code>,然后再调用<code>defineReactive(obj,&#39;a&#39;,2)</code>方法，此时在函数内，<code>val=2</code>，然后每次获取<code>obj.a</code>的值的时候都是获取<code>val</code>的值，设置<code>obj.a</code>的时候也是设置<code>val</code>的值。（每次调用<code>defineReactive</code>都会产生一个闭包保存了<code>val</code>的值）;</p>
+<h3 id="流程讨论"><a href="#流程讨论" class="headerlink" title="流程讨论"></a>流程讨论</h3><p>经过验证之后，发现这个函数确实可以使用的。然后我们来讨论一下响应的流程：</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/17/15fc826af0c5bd33?w=459&amp;h=209&amp;f=png&amp;s=12936" alt=""></p>
+<ol>
+<li>输入数据</li>
+<li>改造数据（<code>defineReactive()</code>）</li>
+<li>如果数据变动 =&gt; 触发事件</li>
+</ol>
+<p>我们来看第三步，数据变动如何触发之后的事件呢？仔细思考一下，如果要改变数据，那么必须先<code>set</code>数据，那么我们直接<code>set()</code>里面添加方法就ok了呀。</p>
+<p>然后还有一个重要问题：</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/17/15fc82db9bbbf6e0?w=475&amp;h=219&amp;f=png&amp;s=14193" alt=""></p>
+<h3 id="依赖收集"><a href="#依赖收集" class="headerlink" title="依赖收集"></a>依赖收集</h3><p>我们怎么知道数据改变之后要触发的是什么事件呢？在Vue中：</p>
+<p>使用数据 =&gt; 视图； 使用了数据来渲染视图，那么在获取数据的时候收集依赖是最佳的时机，Vue在改造数据属性的时候生成一个<code>Dep</code>实例，用于收集依赖。</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 代码 1.2</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Dep</span> </span>&#123;</span><br><span class="line">	<span class="keyword">constructor</span>()&#123;</span><br><span class="line">	    <span class="comment">//订阅的信息</span></span><br><span class="line">		<span class="keyword">this</span>.subs = [];</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">	addSub(sub)&#123;</span><br><span class="line">		<span class="keyword">this</span>.subs.push(sub);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	removeSub (sub) &#123;</span><br><span class="line">		remove(<span class="keyword">this</span>.subs, sub);</span><br><span class="line">	&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">//此方法的作用等同于 this.subs.push(Watcher);</span></span><br><span class="line">	depend()&#123;</span><br><span class="line">		<span class="keyword">if</span> (Dep.target) &#123;</span><br><span class="line">	    	Dep.target.addDep(<span class="keyword">this</span>);</span><br><span class="line">	    &#125;</span><br><span class="line">	&#125;</span><br><span class="line">    <span class="comment">//这个方法就是发布通知了 告诉你 有改变啦</span></span><br><span class="line">	notify()&#123;</span><br><span class="line">		<span class="keyword">const</span> subs = <span class="keyword">this</span>.subs.slice()</span><br><span class="line">	    <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>, l = subs.length; i &lt; l; i++) &#123;</span><br><span class="line">	      subs[i].update();</span><br><span class="line">	    &#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line">Dep.target = <span class="literal">null</span>;</span><br></pre></td></tr></table></figure>
+<p>代码1.2就是<code>Dep</code>的部分代码，暂时只需要知道2个方法的作用就可以了</p>
+<ul>
+<li><code>depend()</code> — 可以理解为收集依赖的事件，不考虑其他方面的话 功能等同于<code>addSub()</code></li>
+<li><code>notify()</code> — 这个方法更为直观了，执行所有依赖的<code>update()</code>方法。就是之后的改变视图啊 等等。</li>
+</ul>
+<blockquote>
+<p>本篇主要讨论数据响应的过程，不深入讨论 <code>Watcher</code>类，所以<code>Dep</code>中的方法知道作用就可以了。</p>
+</blockquote>
+<p>然后就是改变代码1.1了</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//代码 1.3</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">defineReactive</span> (<span class="params">obj,key,val</span>) </span>&#123;</span><br><span class="line">    <span class="keyword">const</span> dep = <span class="keyword">new</span> Dep();</span><br><span class="line"></span><br><span class="line">    <span class="built_in">Object</span>.defineProperty(obj,key,&#123;</span><br><span class="line">        enumerable: <span class="literal">true</span>,</span><br><span class="line">    	configurable: <span class="literal">true</span>,</span><br><span class="line">    	get: <span class="function"><span class="keyword">function</span> (<span class="params"></span>) </span>&#123;</span><br><span class="line">    	    <span class="keyword">if</span>(Dep.target)&#123;</span><br><span class="line">    	        <span class="comment">//收集依赖 等同于  dep.addSub(Dep.target)</span></span><br><span class="line">    	        dep.depend()</span><br><span class="line">    	    &#125;</span><br><span class="line">    	    <span class="keyword">return</span> val;</span><br><span class="line">    	&#125;,</span><br><span class="line">    	set: <span class="function"><span class="keyword">function</span> (<span class="params">newVal</span>) </span>&#123;</span><br><span class="line">    		<span class="keyword">if</span>(newVal === val || (newVal !== newVal &amp;&amp; val !== val))&#123;</span><br><span class="line">    			<span class="keyword">return</span> ;</span><br><span class="line">    		&#125;</span><br><span class="line">    		val = newVal;</span><br><span class="line">    		<span class="comment">//发布改变</span></span><br><span class="line">    		dep.notify();</span><br><span class="line">    	&#125;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这代码中有一个疑点，<code>Dep.target</code>是什么？为什么要有<code>Dep.target</code>才会收集依赖呢？</p>
+<ol>
+<li><code>Dep</code>是一个类，<code>Dep.target</code>是类的属性，并不是<code>dep</code>实例的属性。</li>
+<li><code>Dep</code>类在全局可用，所以<code>Dep.target</code>在全局能访问到，可以任意改变它的值。</li>
+<li><code>get</code>这个方法使用很平常，不可能每次使用获取数据值的时候都去调用<code>dep.depend()</code>。</li>
+<li><code>dep.depend()</code>实际上就是<code>dep.addSub(Dep.target)</code>。</li>
+<li>那么最好方法就是，在使用之前把<code>Dep.target</code>设置成某个对象，在订阅完成之后设置<code>Dep.target = null</code>。</li>
+</ol>
+<h3 id="验证"><a href="#验证" class="headerlink" title="验证"></a>验证</h3><p>是时候来验证一波代码的可用性了<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//代码 1.4</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> obj = &#123;&#125;;<span class="comment">//这一句是不是感觉很熟悉  就相当于初始化vue的data ---- data:&#123;obj:&#123;&#125;&#125;;</span></span><br><span class="line"></span><br><span class="line"><span class="comment">//低配的不能再低配的watcher对象（源码中是一个类，我这用一个对象代替了）</span></span><br><span class="line"><span class="keyword">const</span> watcher = &#123;</span><br><span class="line">	addDep:<span class="function"><span class="keyword">function</span> (<span class="params">dep</span>) </span>&#123;</span><br><span class="line">		dep.addSub(<span class="keyword">this</span>);</span><br><span class="line">	&#125;,</span><br><span class="line">	update:<span class="function"><span class="keyword">function</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">		html();</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//假装这个是渲染页面的</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">html</span> (<span class="params"></span>) </span>&#123;</span><br><span class="line">	<span class="built_in">document</span>.querySelector(<span class="string">'body'</span>).innerHTML = obj.html;</span><br><span class="line">&#125;</span><br><span class="line">defineReactive(obj,<span class="string">'html'</span>,<span class="string">'how are you'</span>);<span class="comment">//定义响应式的数据</span></span><br><span class="line"></span><br><span class="line">Dep.target = watcher;</span><br><span class="line">html();<span class="comment">//第一次渲染界面</span></span><br><span class="line">Dep.target = <span class="literal">null</span>;</span><br></pre></td></tr></table></figure></p>
+<p>此时浏览器上的界面是这样的</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/17/15fc8db39f6f7623?w=475&amp;h=147&amp;f=png&amp;s=2751" alt=""></p>
+<p>然后在下打开了控制台开始调试，输入：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">obj.html = &apos;I am fine thank you&apos;</span><br></pre></td></tr></table></figure>
+<p>然后就发现，按下回车的那一瞬间，奇迹发生了，页面变成了</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/17/15fc8e41ec10317f?w=250&amp;h=75&amp;f=png&amp;s=1948" alt=""></p>
+<h3 id="结尾"><a href="#结尾" class="headerlink" title="结尾"></a>结尾</h3><p>Vue数据响应的设计模式和订阅发布模式有一点像，但是不同，每一个<code>dep</code>实例就是一个订阅中心，每一次发布都会把所有的订阅全部发布出去。<br>Vue的响应式原理其实还有很大一部分，本文主要讨论了Vue是如何让数据进行响应，但是实际上，一般的数据都是很多的，一个数据被多处使用，改变数据之后观察新值，如何观察、如何订阅、如何调度，都还有很大一部分没有讨论。主要的三个类<code>Dep</code>（收集依赖）、<code>Observer</code>（观察数据）、<code>Watcher</code>（订阅者，若数据有变化通知订阅者），都只提了一点点。</p>
+<p>之前写有一篇<a href="https://juejin.im/post/5a04231af265da431f4a84be" target="_blank" rel="noopener">Vue响应式—-数组变异方法</a>，针对Vue中对数组的改造进行讨论。当然之后有更多其他的文章，整个数据响应流程还有很多内容，三个主要的类都还没有讨论完。</p>
+<p>其实阅读源码不仅仅是为了知道源码是如何工作的，更重要的是学习作者的思路与方法，我写的文章都不长，希望自己能够每次专注一个点，能够真真实实领悟到这一个点的原理。当然也想控制阅读时间，免得大家看到一半就关闭了。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2017/11/14/初识Http缓存君/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="王兴欣">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="王兴欣的练功房">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2017/11/14/初识Http缓存君/" itemprop="url">初识Http缓存君</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2017-11-14T10:11:56+08:00">
+                2017-11-14
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h3 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h3><p>二零一七年十一月十三日，就是我开始前端之旅的第n日，我独在卧室外徘徊，遇见程君，前来问我道，“你可曾为http缓存写了一点什么没有？”我说“没有”，他就正告我，“你还是写一点罢，http缓存应该很高兴与你相识，你们可以相互认识多一点”。</p>
+<p>可是我实在无话可说。我只觉得所住的并非人间。产品经理不仁，以程序员为绉狗。可真的程序员，敢于直面惨淡的薪资，敢于正视淋漓的Bug。这是怎样的哀痛者和幸福者？然而重构又常常为庸人设计，以时间的流驶，来洗涤旧迹，仅使留下汹涌的加班和微漠的悲哀。在这汹涌的加班和微漠的悲哀中，又给人暂得偷生，维持着这似人非人的世界。我不知道这样的世界何时是一个尽头！</p>
+<p>而我还在这样的世界里活着，于是觉得有写点什么的必要了。</p>
+<blockquote>
+<p>缓存与性能优化息息相关，在知乎上，有一篇回答令我印象深刻<a href="https://www.zhihu.com/question/20790576/answer/32602154" target="_blank" rel="noopener">大公司里怎样开发和部署前端代码？</a> 该回答讲述了在部署阶段如何利用缓存提高性能，节约带宽。</p>
+</blockquote>
+<h3 id="一、相遇"><a href="#一、相遇" class="headerlink" title="一、相遇"></a>一、相遇</h3><p>与缓存君的相遇是在一场雪夜，当我看见她，我就知道我们会有故事，害羞的我不敢上前去与她交流。马克步是我的好朋友，本来不是的，自从我见到他在月下西瓜田里与猹不可描述后，我们便成了好朋友。他对我说“别怕，我来给你创造环境，你专心做自己的事情。但在此之前我先告诉关于缓存君的一点小知识”，我高兴极了。</p>
+<ul>
+<li>200 ：正常的交流，每次你说的话都会在脑海里过一遍，并且找出合适礼貌的答语来回答你。</li>
+<li>304 ：她知道你想要什么，但是需要大脑给她的身体一个指令，然后做出相应的动作给予你想要的。（协商缓存）</li>
+<li>from memory cache或者disk cache ：本垒打暗示，身体的本能反应，也是最快的。（强缓存）</li>
+</ul>
+<h3 id="二、交流"><a href="#二、交流" class="headerlink" title="二、交流"></a>二、交流</h3><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> http = <span class="built_in">require</span>(<span class="string">'http'</span>);</span><br><span class="line"><span class="keyword">const</span> fs = <span class="built_in">require</span>(<span class="string">'fs'</span>);</span><br><span class="line"><span class="keyword">const</span> path = <span class="built_in">require</span>(<span class="string">'path'</span>);</span><br><span class="line"><span class="keyword">const</span> server = http.createServer().listen(<span class="number">3000</span>);</span><br><span class="line"></span><br><span class="line">server.on(<span class="string">'request'</span>,(req,res) =&gt; &#123;</span><br><span class="line">	<span class="keyword">const</span> url = path.join(__dirname,<span class="string">'static'</span>,req.url);</span><br><span class="line">	fs.readFile(url,(err,data) =&gt; &#123;</span><br><span class="line">	    <span class="comment">//马克步对我说，你别管其他的，每次有静态请求</span></span><br><span class="line">	    <span class="comment">//就会执行这里的代码，读取文件然后返回出去。</span></span><br><span class="line">	    <span class="comment">//之后会在这里设置响应头</span></span><br><span class="line">		res.end(data);</span><br><span class="line">	&#125;)	</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<p>然而在交流过程中却令我高兴不起来，她老是对我不冷不热的。</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb94c2bc1c74eb" alt=""><br>无论我和她对话多少次，她总是慢慢的考虑半天才回答我，这令我很伤心。于是马克步对我说，“别难过，我帮你设置一个暗号，每次你使用暗号与她交流的话，这会使你们的交流更愉快一些。暗号有两种哦”<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//第一种 以资源内容hash为版本号</span></span><br><span class="line">server.on(<span class="string">'request'</span>,(req,res) =&gt; &#123;</span><br><span class="line">	<span class="keyword">const</span> url = path.join(__dirname,<span class="string">'static'</span>,req.url);</span><br><span class="line">	fs.readFile(url,(err,data) =&gt; &#123;</span><br><span class="line">	    <span class="comment">//如果之前的请求在响应头里返回了Etag 那么这次请求就可以拿到</span></span><br><span class="line">	    <span class="comment">//req.headers['if-none-match'] == 之前响应头里的Etag</span></span><br><span class="line">		<span class="keyword">if</span>(req.headers[<span class="string">'if-none-match'</span>] == <span class="string">'hello'</span>)&#123;</span><br><span class="line">			res.statusCode = <span class="number">304</span>;</span><br><span class="line">			res.end();</span><br><span class="line">		&#125;<span class="keyword">else</span>&#123;</span><br><span class="line">		<span class="comment">//响应头里设置Etag,下次请求的时候，会在请求头里加上If-None-Match</span></span><br><span class="line">			res.setHeader(<span class="string">'Etag'</span>, <span class="string">'hello'</span>);</span><br><span class="line">			res.end(data);</span><br><span class="line">		&#125;</span><br><span class="line">		res.end(data);</span><br><span class="line">	&#125;)	</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure></p>
+<p>我再次和缓存君攀谈了起来。</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb9685128a8277" alt="这一次依然如同陌生人一样，但是这次我拿到了一个暗号,`Etag:hello`，我激动地赶紧使用暗号重复刚才的话。"></p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb9689b618ecc4" alt="呀，缓存君对我态度果然变了呀，而且速度也快了很多。"></p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//第二种 以资源修改时间为版本号</span></span><br><span class="line">server.on(<span class="string">'request'</span>,(req,res) =&gt; &#123;</span><br><span class="line">	<span class="keyword">const</span> url = path.join(__dirname,<span class="string">'static'</span>,req.url);</span><br><span class="line">	fs.readFile(url,(err,data) =&gt; &#123;</span><br><span class="line">	    <span class="comment">//如果之前的请求在响应头里返回了Last-Modifiedtag 那么这次请求就可以拿到</span></span><br><span class="line">	    <span class="comment">//req.headers['if-modified-since'] == 之前响应头里的Last-Modified</span></span><br><span class="line">	    <span class="keyword">if</span>(req.headers[<span class="string">'if-modified-since'</span>])&#123;</span><br><span class="line">			res.statusCode = <span class="number">304</span></span><br><span class="line">    		res.end()</span><br><span class="line">		&#125;<span class="keyword">else</span>&#123;	</span><br><span class="line">		    <span class="comment">//在响应头里设置上次修改时间 必需为国际标准时间</span></span><br><span class="line">			res.setHeader(<span class="string">'Last-Modified'</span>, <span class="keyword">new</span> <span class="built_in">Date</span>().toUTCString());</span><br><span class="line">			res.end(data);</span><br><span class="line">		&#125;</span><br><span class="line">		res.end(data);</span><br><span class="line">	&#125;)	</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb9703957abb79" alt="第二天再次攀谈，缓存君不认识我了。不过没关系，我拿到了时间暗号"></p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb9704595830a4" alt="我们像老朋友一样愉快的交流了起来"></p>
+<h3 id="老姐、我想。。。"><a href="#老姐、我想。。。" class="headerlink" title="老姐、我想。。。"></a>老姐、我想。。。</h3><p>马克步最知我心思，他告诉我说，你若想要非常亲密的关系，其实设置一个分手时间就可以了。<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">server.on(<span class="string">'request'</span>,(req,res) =&gt; &#123;</span><br><span class="line">	<span class="keyword">const</span> url = path.join(__dirname,<span class="string">'static'</span>,req.url);</span><br><span class="line">	fs.readFile(url,(err,data) =&gt; &#123;</span><br><span class="line">	    <span class="comment">//设置缓存过期时间</span></span><br><span class="line">        res.setHeader(<span class="string">'Cache-Control'</span>,<span class="string">'max-age=5'</span>);</span><br><span class="line">		res.end(data);</span><br><span class="line">	&#125;)	</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure></p>
+<p>我怀着忐忑的心徐徐向前。</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb978bd7ded7ae" alt="第一次交谈没什么变化，但是她给了我一个时间"></p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb97917c6f08e1" alt="卧槽!瞬间就亲密无间了。"></p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/14/15fb97a1f871bf82" alt="但是五秒后，又不认识我了（max-age以秒记）"><br>马克步心想：我寻思给你五秒钟应该够了呀！</p>
+<h3 id="此次经历"><a href="#此次经历" class="headerlink" title="此次经历"></a>此次经历</h3><p>Http缓存按强势程度分为：</p>
+<ul>
+<li>强缓存 — 有效期内，直接从本地获取资源，<strong>不需要发送请求</strong>。</li>
+<li>弱缓存 — 有效期内同上。在有效期外<strong>需要发送请求</strong>，如果返回304就继续用本地缓存，返回200则把新版本缓存起来，本地版本扔掉。</li>
+</ul>
+<p>这次的经历实在是没什么营养。想要了解详细的话有如下建议：</p>
+<ol>
+<li><a href="https://www.zhihu.com/question/20790576/answer/32602154" target="_blank" rel="noopener">大公司里怎样开发和部署前端代码？</a></li>
+<li><a href="http://harttle.com/2017/04/04/using-http-cache.html" target="_blank" rel="noopener">使用 HTTP 缓存：Etag, Last-Modified 与 Cache-Control</a></li>
+<li><a href="https://segmentfault.com/a/1190000009005195#articleHeader3" target="_blank" rel="noopener">浏览器缓存机制剖析</a></li>
+<li><a href="https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Caching_FAQ" target="_blank" rel="noopener">MDN  HTTP 缓存</a></li>
+</ol>
+<p>最好能按照顺序阅读1、2、3，并且在阅读过程中辅以MDN文档。</p>
+<hr>
+<p>其实马克步并不是他的真名，我曾经询问过他的真名，马克步说“我的名字实在是土的很，因为算命先生说我命中缺土，于是在名字中为我平衡”，我想了想马克步与猹的故事惊讶道：“难道你叫”，马克步说：“你想得不错，我叫<strong>闺垚</strong>”</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2017/11/10/Vue响应式-数组变异方法/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="王兴欣">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="王兴欣的练功房">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2017/11/10/Vue响应式-数组变异方法/" itemprop="url">Vue响应式----数组变异方法</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2017-11-10T15:46:18+08:00">
+                2017-11-10
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>很多初使用<code>Vue</code>的同学会发现，在改变数组的值的时候，值确实是改变了，但是视图却无动于衷，果然是因为数组太高冷了吗？<br>查看<a href="https://cn.vuejs.org/v2/guide/list.html#数组更新检测" target="_blank" rel="noopener">官方文档</a>才发现，不是女神太高冷，而是你没用对方法。<br><img src="https://user-gold-cdn.xitu.io/2017/11/9/83da7d6b921de6aff8e502c6e9c2576f" alt=""></p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/9/b1d48bda1980c83bfe1f4e24159f66ea" alt=""></p>
+<p>看来想让女神自己动，关键得用对方法。虽然在官方文档中已经给出了方法，但是在下实在好奇的紧，想要解锁更多姿势的话，那就必须先要深入女神的心，于是乎才有了去探索Vue响应式原理的想法。(如果你愿意一层一层地剥开我的心。你会发现，你会讶异……　沉迷于鬼哭狼嚎 无法自拔QAQ)。</p>
+<blockquote>
+<p>前排提示，<code>Vue</code>的响应式原理主要是使用了ES5的<code>Object.defineProperty</code>，毫不知情的同学可以查看<a href="https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty" target="_blank" rel="noopener">相关资料</a>。</p>
+</blockquote>
+<h3 id="为啥数组不响应？"><a href="#为啥数组不响应？" class="headerlink" title="为啥数组不响应？"></a>为啥数组不响应？</h3><p>仔细一想，<code>Vue</code>的响应是基于<code>Object.definePropery</code>的，这个方法主要是对对象属性的描述进行修改。数组其实也是对象，通过定义数组的属性应该也能产生响应的效果呀。先验证一下自己的想法，撸起袖子就开干。<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> arr = [<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span>];</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> val = arr[<span class="number">0</span>];</span><br><span class="line"></span><br><span class="line"><span class="built_in">Object</span>.defineProperty(arr,<span class="string">'0'</span>,&#123;</span><br><span class="line">	enumerable: <span class="literal">true</span>,</span><br><span class="line">    configurable: <span class="literal">true</span>,</span><br><span class="line">	get()&#123;</span><br><span class="line">		doSomething();</span><br><span class="line">		<span class="keyword">return</span> val;</span><br><span class="line">	&#125;,</span><br><span class="line">	set(a)&#123;</span><br><span class="line">		val = a;</span><br><span class="line">		doSomething();</span><br><span class="line">	&#125;</span><br><span class="line">&#125;);</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">doSomething</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>然后在控制台中分别输入<code>arr</code>、<code>arr[0] = 2</code>、<code>arr</code>，可以看到如下图的结果。</p>
+<p><img src="https://user-gold-cdn.xitu.io/2017/11/9/757cb2f5cc01234798ac0a4a8d232634" alt=""><br>咦，一切居然都如预想猜想的一样。<br>接下来，看到这段代码，有的同学可能会有所疑问，为啥在<code>get()</code>方法里不直接返回<code>this[0]</code>呢？而是要借助<code>val</code>来返回值呢？<br>仔细一想，卧槽！！！差点特么的死循环了，你想呀，<code>get()</code>本身就是获取当前属性的值，在<code>get()</code>里调用<code>this[0]</code>不是等同于再次调用了<code>get()</code>方法吗？ 好可怕好可怕，简直吓死劳资了。</p>
+<p>虽然你想象中的女神可能会这种姿势，但是你眼前的这个女神确实不是这种姿势的，像我这种屌丝属性暴露无疑的人怎么可能猜透女神的心思？为什么不这样响应数据呢？或许是因为数组和对象还是有所差别，定义数组的属性可能会产生一些<strong>麻烦与Bug</strong>。又或许是因为在交互的过程中可能会产生大量的数据，导致整体的<strong>性能下降</strong>。也有可能是作者权衡利弊之后用其他方法也可以达到数据响应的效果。反正我是猜不透啦。</p>
+<h3 id="为啥调用数组原生方法就可以响应了？"><a href="#为啥调用数组原生方法就可以响应了？" class="headerlink" title="为啥调用数组原生方法就可以响应了？"></a>为啥调用数组原生方法就可以响应了？</h3><p>为什么使用了这些数组的方法就就能让数据响应了呢？<br>先看看数组部分的源码吧。</p>
+<p>简单的来讲，<code>def</code>的作用就是重新定义对象属性的<code>value</code>值。<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//array.js</span></span><br><span class="line"><span class="keyword">import</span> &#123; def &#125; <span class="keyword">from</span> <span class="string">'../util/index'</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> arrayProto = <span class="built_in">Array</span>.prototype</span><br><span class="line"><span class="keyword">export</span> <span class="keyword">const</span> arrayMethods = <span class="built_in">Object</span>.create(arrayProto)</span><br><span class="line"><span class="comment">//arrayMethods是对数组的原型对象的拷贝，</span></span><br><span class="line"><span class="comment">//在之后会将该对象里的特定方法进行变异后替换正常的数组原型对象</span></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Intercept mutating methods and emit events</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line">[</span><br><span class="line">  <span class="string">'push'</span>,</span><br><span class="line">  <span class="string">'pop'</span>,</span><br><span class="line">  <span class="string">'shift'</span>,</span><br><span class="line">  <span class="string">'unshift'</span>,</span><br><span class="line">  <span class="string">'splice'</span>,</span><br><span class="line">  <span class="string">'sort'</span>,</span><br><span class="line">  <span class="string">'reverse'</span></span><br><span class="line">]</span><br><span class="line">.forEach(<span class="function"><span class="keyword">function</span> (<span class="params">method</span>) </span>&#123;</span><br><span class="line">  <span class="comment">// cache original method</span></span><br><span class="line">  <span class="comment">//将上面的方法保存到original中</span></span><br><span class="line">  <span class="keyword">const</span> original = arrayProto[method]</span><br><span class="line">  def(arrayMethods, method, <span class="function"><span class="keyword">function</span> <span class="title">mutator</span> (<span class="params">...args</span>) </span>&#123;</span><br><span class="line">    <span class="keyword">const</span> result = original.apply(<span class="keyword">this</span>, args)</span><br><span class="line">    <span class="keyword">const</span> ob = <span class="keyword">this</span>.__ob__</span><br><span class="line">    <span class="keyword">let</span> inserted</span><br><span class="line">    <span class="keyword">switch</span> (method) &#123;</span><br><span class="line">      <span class="keyword">case</span> <span class="string">'push'</span>:</span><br><span class="line">      <span class="keyword">case</span> <span class="string">'unshift'</span>:</span><br><span class="line">        inserted = args</span><br><span class="line">        <span class="keyword">break</span></span><br><span class="line">      <span class="keyword">case</span> <span class="string">'splice'</span>:</span><br><span class="line">        inserted = args.slice(<span class="number">2</span>)</span><br><span class="line">        <span class="keyword">break</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (inserted) ob.observeArray(inserted)</span><br><span class="line">    <span class="comment">// notify change</span></span><br><span class="line">    ob.dep.notify()</span><br><span class="line">    <span class="keyword">return</span> result</span><br><span class="line">  &#125;)</span><br><span class="line">&#125;)</span><br></pre></td></tr></table></figure></p>
+<p>贴出<code>def</code>部分的代码</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Define a property.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">export</span> <span class="function"><span class="keyword">function</span> <span class="title">def</span> (<span class="params">obj: Object, key: string, val: any, enumerable?: boolean</span>) </span>&#123;</span><br><span class="line">  <span class="built_in">Object</span>.defineProperty(obj, key, &#123;</span><br><span class="line">    value: val,</span><br><span class="line">    enumerable: !!enumerable,</span><br><span class="line">    writable: <span class="literal">true</span>,</span><br><span class="line">    configurable: <span class="literal">true</span></span><br><span class="line">  &#125;)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>array.js是对数组的一些方法进行变异，我们以<code>push</code>方法来举个例子。<br>首先 就是要用<code>original = arrayProto[&#39;push&#39;]</code>来保存原生的<code>push</code>方法。</p>
+<p>然后就是要定义变异的方法了，对于<code>def</code>函数，如果不深究的话，<code>def(arrayMethods,method,function(){})</code>，这个函数可以粗略的表示为<code>arrayMethods[method] = function mutator(){}</code>;<br>假设在之后调用<code>push</code>方法,实际上调用的是<code>mutator</code>方法，在<code>mutator</code>方法中，第一件事就是调用保存了原生<code>push</code>方法的<code>original</code>，先求出实际的值。<br>一堆文字看起来实在很抽象，那么写一段低配版的代码来表达源码的含义。</p>
+<figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> push = <span class="built_in">Array</span>.prototype.push;</span><br><span class="line"></span><br><span class="line"><span class="built_in">Array</span>.prototype.push = <span class="function"><span class="keyword">function</span> <span class="title">mutator</span> (<span class="params">...arg</span>)</span>&#123;</span><br><span class="line">	<span class="keyword">const</span> result = push.apply(<span class="keyword">this</span>,arg);</span><br><span class="line">	doSomething();</span><br><span class="line">	<span class="keyword">return</span> result</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">doSomething</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">	<span class="built_in">console</span>.log(<span class="string">'do something'</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> arr = [];</span><br><span class="line">arr.push(<span class="number">1</span>);</span><br><span class="line">arr.push(<span class="number">2</span>);</span><br><span class="line">arr.push(<span class="number">3</span>);</span><br></pre></td></tr></table></figure>
+<p>在控制台中查看结果为：<br><img src="https://user-gold-cdn.xitu.io/2017/11/10/598ba2b95a70ed9383c4f73b9f864e4a" alt="">。</p>
+<p>那么源码中的<br><figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> ob = <span class="keyword">this</span>.__ob__</span><br><span class="line">    <span class="keyword">let</span> inserted</span><br><span class="line">    <span class="keyword">switch</span> (method) &#123;</span><br><span class="line">      <span class="keyword">case</span> <span class="string">'push'</span>:</span><br><span class="line">      <span class="keyword">case</span> <span class="string">'unshift'</span>:</span><br><span class="line">        inserted = args</span><br><span class="line">        <span class="keyword">break</span></span><br><span class="line">      <span class="keyword">case</span> <span class="string">'splice'</span>:</span><br><span class="line">        inserted = args.slice(<span class="number">2</span>)</span><br><span class="line">        <span class="keyword">break</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (inserted) ob.observeArray(inserted)</span><br><span class="line">    <span class="comment">// notify change</span></span><br><span class="line">    ob.dep.notify()</span><br></pre></td></tr></table></figure></p>
+<p>这段代码就是对应的<code>doSomething()</code>了</p>
+<p>在该代码中，清清楚楚的写了2个单词的注释<strong>notify change</strong>,不认识这2个单词的同学就百度一下嘛，这里就由我代劳了，这俩单词的意思是<strong>发布改变</strong>！<br>每次调用了该方法，都会求出值，然后做一些其他的事情，比如发布改变与观察新增的元素，响应的其他过程在本篇就不讨论了。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">[</span><br><span class="line">  &apos;push&apos;,</span><br><span class="line">  &apos;pop&apos;,</span><br><span class="line">  &apos;shift&apos;,</span><br><span class="line">  &apos;unshift&apos;,</span><br><span class="line">  &apos;splice&apos;,</span><br><span class="line">  &apos;sort&apos;,</span><br><span class="line">  &apos;reverse&apos;</span><br><span class="line">]</span><br></pre></td></tr></table></figure></p>
+<p>目前一共有这么些方法，只要用对方法就能改变女神的姿势哟！</p>
+<h2 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h2><p>对于标题，我一改再改，一开始叫浅析Vue响应原理，但是后来一看 这个标题实在太大，那就从最简单的入手吧，先从数组入手，而且本篇也不会花费太多时间去阅读。如果本篇有什么地方写得有误，误导了他人，请一定指出，万分感激。<br>最后在光棍节前祝大家光棍节快乐。<br>我？ 我特么当然不是单身狗啦！<br><img src="https://user-gold-cdn.xitu.io/2017/11/10/4da47682d7fb26fd21c8dd4f719a0eb2" alt=""></p>
+<p>哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈<br>呜呜呜呜呜呜呜呜呜呜呜呜呜呜呜呜呜呜<br><img src="https://user-gold-cdn.xitu.io/2017/11/10/899c380ac02cffd974d29d8ed10985dd" alt=""></p>
 
           
         
@@ -557,7 +902,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-count">4</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -565,6 +910,15 @@
 
             
 
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                
+                  <span class="site-state-item-count">3</span>
+                  <span class="site-state-item-name">标签</span>
+                
+              </div>
             
 
           </nav>
